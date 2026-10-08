@@ -9,10 +9,12 @@ async function scenario(name, kind) {
  const button = { disabled: false, textContent: 'Generate draft' };
  const status = { hidden: true, className: '', textContent: '' };
  const cancel = { hidden: true, addEventListener: (t, f) => clickHandlers[t] = f, removeEventListener: t => delete clickHandlers[t] };
- const form = { action: 'http://localhost/index.php?page=assistant', dataset: {}, querySelector: () => ({value:'ai'}) };
+ // Reproduce the browser's named-control collision with <input name="action">.
+ const form = { action: {toString:()=> '[object HTMLInputElement]'}, getAttribute:()=> null, dataset: {}, querySelector: () => ({value:'ai'}) };
  let redirect = '', calls = 0, timeout;
  const window = {addEventListener:()=>{},location:{href:'http://localhost/index.php?page=assistant',origin:'http://localhost',assign:url=>redirect=url}};
  const fetch = async (url, options) => {
+  assert.equal(url,'http://localhost/index.php?page=assistant','Upload must target the page URL, never the hidden action input');
   calls++;
   if(kind === 'network') throw new Error('Network error');
   if(kind === 'cancel' || kind === 'timeout' || kind === 'duplicate') {

@@ -17,6 +17,7 @@ Verified:
 - Missing AI configuration handled with a clear message.
 - Missing AI setup returns an immediate JSON error for image requests; expired forms return JSON errors; AI settings save privately without displaying the key. No live key was used in tests.
 - AI UI recovers after configuration errors, network errors, unexpected HTML, timeout and cancellation. Duplicate clicks send a single request; success navigates to the reviewed draft. Run `node tests/ai-ui.js` from the project root.
+- Regression tests reproduce a hidden `name="action"` input masking the DOM form.action property, and verify every AI upload goes to the page URL instead of `/[object HTMLInputElement]`.
 - PDF/JPG/PNG order-sheet uploads and authenticated downloads; attachments saved through order data entry; fake PDFs rejected before an order can be partially saved.
 - Saved sheet selector and direct-upload controls in the AI assistant; image and PDF input payloads match their respective API types; saved sheets cannot be selected from a different order; downloads require login.
 - No PHP warnings, fatal errors or SQL errors in the final HTTP test run's server log.

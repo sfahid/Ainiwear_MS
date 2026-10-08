@@ -37,7 +37,9 @@ document.addEventListener('submit', async event => {
   status.textContent = `Waiting for AI · ${Math.floor((Date.now() - started) / 1000)} seconds. You can cancel the wait.`;
  }, 1000);
  try {
-  const response = await fetch(form.action, {
+  // A hidden field named "action" shadows the form.action DOM property.
+  const endpoint = form.getAttribute('action') || window.location.href;
+  const response = await fetch(endpoint, {
    method: 'POST', body: new FormData(form),
    headers: { Accept: 'application/json' }, signal: controller.signal
   });
