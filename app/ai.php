@@ -25,6 +25,9 @@ function ai_draft(string $task,string $input,array $context,?array $attachment=n
  if($attachment)$parts[]=ai_attachment_part($attachment);
  $body=['model'=>$ai['model'],'store'=>false,'instructions'=>$instructions,'input'=>[['role'=>'user','content'=>$parts]],'max_output_tokens'=>2400];
  $ch=curl_init($ai['endpoint']??'https://api.openai.com/v1/responses');
+ // WAMP may need an explicit CA bundle; retain certificate verification.
+ $caBundle=__DIR__.'/../storage/certs/cacert.pem';
+ if(is_file($caBundle))curl_setopt($ch,CURLOPT_CAINFO,$caBundle);
  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_RETURNTRANSFER=>true,CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$ai['key']],CURLOPT_POSTFIELDS=>json_encode($body,JSON_THROW_ON_ERROR),CURLOPT_CONNECTTIMEOUT=>8,CURLOPT_TIMEOUT=>45,CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS]);
  $raw=curl_exec($ch);$status=curl_getinfo($ch,CURLINFO_HTTP_CODE);$error=curl_error($ch);$errno=curl_errno($ch);curl_close($ch);
  if($raw===false){error_log('AI connection: '.$error);throw new RuntimeException($errno===CURLE_OPERATION_TIMEDOUT?'AI did not respond within 45 seconds. Try a smaller image or fewer PDF pages. No records were changed.':'AI connection failed. Check Internet access and PHP TLS certificate settings.');}

@@ -134,7 +134,7 @@ See `TEST-REPORT.md` for the checks performed on this package. To rerun integrat
 
 Back up the database via phpMyAdmin Export, `storage/images`, `storage/documents`, and your private config.php together. Restore into a matching schema and preserve filenames. There is no backup scheduler, email integration, real-time courier API, accounting, inventory reservation, offline OCR, background job runner, permission roles or audit history in this MVP. All staff can edit all records. Keep WAMP local or on a trusted private network; an internet deployment needs HTTPS, stronger shared login throttling, user/role administration, operational monitoring and a security review.
 
-Common setup issues: wrong MySQL/MariaDB port; PHP CLI version differs from Apache; disabled extensions; storage permissions; POST limit too small; missing vendor folder; `.htaccess` not honored. If AI has a TLS error, configure a current CA certificate bundle for PHP cURL—do not disable certificate verification.
+Common setup issues: wrong MySQL/MariaDB port; PHP CLI version differs from Apache; disabled extensions; storage permissions; POST limit too small; missing vendor folder; `.htaccess` not honored. If AI has a TLS error, download the current CA bundle from https://curl.se/docs/caextract.html, verify its published SHA-256 checksum, and save it as `storage/certs/cacert.pem`. The assistant automatically uses that bundle with certificate verification enabled. Set `curl.cainfo` and `openssl.cafile` to its absolute path in the app's active PHP configuration for other PHP HTTPS requests. Refresh the bundle periodically; never disable certificate verification.
 
 ## PDF and image order sheets
 
