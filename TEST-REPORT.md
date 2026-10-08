@@ -10,6 +10,8 @@ Live WAMP checks confirm authenticated sign-in routes through the loopback hando
 
 Six sign-in interface checks (`node tests/chatgpt-ui.js`) cover the visible browser link, duplicate clicks, network errors, timeout, unexpected HTML, and unsafe returned addresses. Sign-in uses JSON preparation followed by a visible user-clicked link to avoid silent in-app browser redirect blocking.
 
+Subscription streamed-text regression: 16 security/stream checks now include terminal events without an output array and terminal text taking precedence over accumulated deltas. Live deployed image extraction succeeded with a synthetic requirements PNG and the user's authorized subscription; no customer data or paid API fallback was used. Completed events can omit output, so the parser retains text deltas and done events and still rejects incomplete or interrupted streams.
+
 Verified:
 
 - Login, logout, authentication guard and CSRF rejection.

@@ -108,10 +108,21 @@ function chatgpt_access(int $user):string {
  }finally{flock($lock,LOCK_UN);fclose($lock);}
 }
 function chatgpt_stream_result(string $raw):array {
+ $text=[];
  foreach(preg_split('/\r?\n\r?\n/',$raw) as $event){
   $lines=[];foreach(explode("\n",$event) as $line)if(str_starts_with($line,'data:'))$lines[]=trim(substr($line,5));
   $data=json_decode(implode("\n",$lines),true);if(!is_array($data))continue;
-  if(($data['type']??'')==='response.completed')return $data['response'];
+  $type=$data['type']??'';
+  $key=($data['output_index']??0).':'.($data['content_index']??0);
+  if($type==='response.output_text.delta')$text[$key]=($text[$key]??'').($data['delta']??'');
+  if($type==='response.output_text.done'&&isset($data['text']))$text[$key]=$data['text'];
+  if($type==='response.completed'){
+   $response=$data['response']??[];
+   // Subscription streams can omit output from the terminal response.
+   $hasText=false;foreach($response['output']??[] as $item)foreach($item['content']??[] as $part)if(($part['type']??'')==='output_text'&&($part['text']??'')!=='')$hasText=true;
+   if(!$hasText&&$text)$response['output'][]=['type'=>'message','content'=>[['type'=>'output_text','text'=>implode("\n",$text)]]];
+   return $response;
+  }
   if(in_array($data['type']??'',['response.failed','error'],true))throw new RuntimeException('ChatGPT could not complete the draft. Check your plan usage and app permissions at chatgpt.com/settings/usage. No paid API fallback was attempted.');
   if(($data['type']??'')==='response.incomplete')throw new RuntimeException('ChatGPT returned an incomplete draft. Try shorter input.');
  }
