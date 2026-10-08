@@ -1,0 +1,9 @@
+/config.php
+/php.ini
+/.env
+/.env.*
+!/\.env.example
+*.log
+/vendor/
+/storage/images/*
+!/storage/images/.gitkeep
