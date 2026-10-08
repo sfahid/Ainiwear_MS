@@ -1,7 +1,8 @@
 <?php
 if($_SERVER['REQUEST_METHOD']!=='POST')return;
-if(!hash_equals($_SESSION['csrf'],(string)($_POST['csrf']??''))){http_response_code(403);exit('Expired form. Reload and try again.');}
+if(!hash_equals($_SESSION['csrf'],(string)($_POST['csrf']??''))){if(str_contains($_SERVER['HTTP_ACCEPT']??'','application/json'))json_reply(['ok'=>false,'error'=>'Your session or form expired. Reload the page and sign in again.'],403);http_response_code(403);exit('Expired form. Reload and try again.');}
 $action=text('action',40,true);
+$aiJson=$action==='ai'&&str_contains($_SERVER['HTTP_ACCEPT']??'','application/json');
 try {
  if($action==='login'){
   if(time()<($_SESSION['login_after']??0))throw new InvalidArgumentException('Please wait a few seconds before trying again.');
@@ -9,9 +10,18 @@ try {
   if(!$u||!password_verify(text('password',512,true),$u['password_hash'])){$_SESSION['login_after']=time()+3;throw new InvalidArgumentException('Incorrect username or password.');}
   session_regenerate_id(true);$_SESSION['user']=['id'=>$u['id'],'name'=>$u['name']];unset($_SESSION['login_after']);go();
  }
- if(empty($_SESSION['user']))go('login');
+ if(empty($_SESSION['user'])){if($aiJson)json_reply(['ok'=>false,'error'=>'Sign in again before using AI.'],401);go('login');}
  if($action==='logout'){$_SESSION=[];session_destroy();go('login');}
  switch($action){
+ case 'ai_settings':
+  $key=text('api_key',512);$model=text('model',100,true);
+  if(!preg_match('/^[a-zA-Z0-9_.:\/-]+$/',$model))throw new InvalidArgumentException('Enter a valid model ID from your API account.');
+  if($key==='')$key=$config['ai']['key']??'';
+  if($key===''||preg_match('/\s/',$key))throw new InvalidArgumentException('Enter your API key without spaces.');
+  $path=dirname(__DIR__).'/storage/ai-settings.json';$temp=dirname(__DIR__).'/storage/ai-settings-'.bin2hex(random_bytes(6)).'.tmp';
+  if(file_put_contents($temp,json_encode(['key'=>$key,'model'=>$model],JSON_THROW_ON_ERROR),LOCK_EX)===false)throw new RuntimeException('Could not save AI settings. Check storage folder permissions.');
+  chmod($temp,0600);if(!rename($temp,$path)){unlink($temp);throw new RuntimeException('Could not save AI settings.');}
+  flash('AI settings saved. Open the assistant to test your model with a small file.');go('assistant');
  case 'customer':
   $data=[text('name',160,true),text('email',160),text('phone',80),text('country',100),text('address')];
   if($data[1]!==''&&!filter_var($data[1],FILTER_VALIDATE_EMAIL))throw new InvalidArgumentException('Invalid email address.');
@@ -65,6 +75,7 @@ try {
  case 'rate_toggle':$id=integer('id');$r=must('shipping_rates',$id);q('UPDATE shipping_rates SET active=? WHERE id=?',[$r['active']?0:1,$id]);go('shipping');
  case 'import_rates':$count=import_rates($_FILES['rates']??[]);flash("$count rates imported. Existing matching slabs updated.");go('shipping');
  case 'ai':
+  ai_require_config();
   if(time()<($_SESSION['ai_after']??0))throw new InvalidArgumentException('Wait 10 seconds between AI requests.');
   $context=[];$itemid=(int)($_POST['item_id']??0);$orderid=(int)($_POST['order_id']??0);
   if($itemid){$context['item']=must('items',$itemid);$orderid=(int)$context['item']['order_id'];$context['components']=rows('SELECT c.*,t.name type_name FROM components c JOIN component_types t ON t.id=c.type_id WHERE item_id=?',[$itemid]);$context['steps']=rows('SELECT * FROM item_steps WHERE item_id=? ORDER BY position,id',[$itemid]);}
@@ -75,9 +86,15 @@ try {
   if($hasUpload)$attachment=validate_document($_FILES['attachment']);
   elseif($fileid){if(!$orderid)throw new InvalidArgumentException('Select a linked order first.');$attachment=saved_document($fileid,$orderid);}
   $_SESSION['ai_after']=time()+10;
-  $task=text('task',20,true);$draft=ai_draft($task,text('input',12000),$context,$attachment);
-  $_SESSION['ai_draft']=['text'=>$draft,'task'=>$task,'item_id'=>$itemid,'order_id'=>$orderid];go('assistant',['item_id'=>$itemid,'order_id'=>$orderid]);
+  $task=text('task',20,true);$input=text('input',12000);$userId=$_SESSION['user']['id'];
+  // Release the session while waiting so other pages and cancellation remain usable.
+  session_write_close();$draft=ai_draft($task,$input,$context,$attachment);session_start();
+  if(($_SESSION['user']['id']??null)!==$userId){if($aiJson)json_reply(['ok'=>false,'error'=>'Your session changed. Sign in and try again.'],401);go('login');}
+  $_SESSION['ai_draft']=['text'=>$draft,'task'=>$task,'item_id'=>$itemid,'order_id'=>$orderid];
+  if($aiJson)json_reply(['ok'=>true,'redirect'=>'index.php?'.http_build_query(['page'=>'assistant','item_id'=>$itemid,'order_id'=>$orderid])]);
+  go('assistant',['item_id'=>$itemid,'order_id'=>$orderid]);
  default:throw new InvalidArgumentException('Unknown action.');
  }
 }catch(PDOException $e){error_log($e->getMessage());$error=$e->getCode()==='23000'?'A matching code or name already exists, or a referenced record is missing.':'Could not save. Check database connection and server logs.';}
 catch(Throwable $e){error_log($e->getMessage());$error=$e instanceof InvalidArgumentException||$e instanceof RuntimeException?$e->getMessage():'Could not complete this request. Check server logs.';}
+if($aiJson&&isset($error))json_reply(['ok'=>false,'error'=>$error],isset($e)&&$e instanceof InvalidArgumentException?422:502);

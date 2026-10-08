@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 if(PHP_SAPI!=='cli')exit('CLI only');
-$root=dirname(__DIR__);$cfg=$root.'/config.php';if(is_file($cfg))exit("Use a disposable copy with no config.php.\n");
+$root=dirname(__DIR__);$cfg=$root.'/config.php';if(is_file($cfg)||is_file($root.'/storage/ai-settings.json'))exit("Use a disposable copy with no config.php or saved AI settings.\n");
 require $root.'/vendor/autoload.php';
 require $root.'/app/functions.php';require $root.'/app/shipping.php';
 require $root.'/app/documents.php';
@@ -9,10 +9,11 @@ $port=(int)(getenv('TEST_DB_PORT')?:3306);$user=getenv('TEST_DB_USER')?:'root';$
 $db=new PDO("mysql:host=127.0.0.1;port=$port;charset=utf8mb4",$user,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
 $name='aini_test_'.bin2hex(random_bytes(6));$temp=sys_get_temp_dir().'/'.$name;mkdir($temp);$proc=null;$count=0;
 function check(bool $ok,string $label):void{global $count;if(!$ok)throw new RuntimeException('FAIL: '.$label);$count++;echo "PASS: $label\n";}
-function request(string $page,array $post=[]):array{
+function request(string $page,array $post=[],array $headers=[]):array{
  global $base,$temp;
  $ch=curl_init($base.'/index.php'.($page?'?'.$page:''));
  curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_COOKIEFILE=>$temp.'/cookies',CURLOPT_COOKIEJAR=>$temp.'/cookies',CURLOPT_TIMEOUT=>20]);
+ if($headers)curl_setopt($ch,CURLOPT_HTTPHEADER,$headers);
  if($post)curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>$post]);
  $body=curl_exec($ch);if($body===false)throw new RuntimeException(curl_error($ch));$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);$headers=curl_getinfo($ch);curl_close($ch);return [$code,$body,$headers];
 }
@@ -74,6 +75,11 @@ try{
  [$code,$body]=request('page=shipping&destination=United+Kingdom&currency=USD&weight=5&mode=fastest');check(str_contains($body,'Best match')&&strpos($body,'Express')<strpos($body,'Economy'),'Shipping recommendation and weight boundary');
  [$code,$body]=request('page=shipping&destination=United+Kingdom&currency=EUR&weight=5');check(str_contains($body,'No active, unexpired rates match'),'Cross-currency rates excluded');
  [$code,$body]=request('page=assistant&item_id='.$item,['action'=>'ai','csrf'=>$csrf,'item_id'=>$item,'order_id'=>$order,'task'=>'steps','input'=>'Suggest steps']);check(str_contains($body,'AI is not configured'),'AI disabled state');
+ $begin=microtime(true);[$code,$body,$meta]=request('page=assistant',['action'=>'ai','csrf'=>$csrf,'task'=>'instructions','input'=>'Read the image','attachment'=>new CURLFile($png,'image/png','instructions.png')],['Accept: application/json']);$json=json_decode($body,true);check($code===422&&str_contains($json['error']??'','AI setup')&&str_contains($meta['content_type'],'application/json')&&microtime(true)-$begin<3,'Missing AI settings returns immediate JSON error for image upload');
+ [$code,$body]=request('page=assistant',['action'=>'ai','csrf'=>'expired','task'=>'instructions'],['Accept: application/json']);check($code===403&&str_contains(json_decode($body,true)['error']??'','expired'),'Expired AI form returns JSON error');
+ [$code,$body]=request('page=settings');check(str_contains($body,'name="api_key"')&&str_contains($body,'type="password"'),'Private AI setup form is available');
+ [$code]=request('page=settings',['action'=>'ai_settings','csrf'=>$csrf,'api_key'=>'test-key-not-real','model'=>'test-vision-model']);check($code===302&&is_file($root.'/storage/ai-settings.json'),'AI settings saved privately');
+ [$code,$body]=request('page=settings');check(!str_contains($body,'test-key-not-real')&&str_contains($body,'test-vision-model'),'Saved API key never rendered in settings');
  $built=suggestions(['name'=>'Jersey','fabric'=>'knit','requirements'=>'sublimation embroidered logo'],[],rows('SELECT * FROM step_templates ORDER BY position'));check(in_array('Knitting',$built)&&in_array('Sublimation',$built)&&in_array('Logo preparation',$built),'Offline production suggestions');
  [$code]=request('', ['action'=>'logout','csrf'=>$csrf]);check($code===302,'Logout');[$code,$body]=request('image='.$image);check(!str_starts_with($body,"\x89PNG"),'Images require login');
  [$code,$body]=request('file='.$fileid);check(!str_starts_with($body,'%PDF-')&&str_contains($body,'Sign in to your workspace'),'Order files require login');
@@ -83,6 +89,7 @@ try{
 finally{
  if(is_resource($proc)){proc_terminate($proc);proc_close($proc);}
  if(is_file($cfg))unlink($cfg);
+ if(is_file($root.'/storage/ai-settings.json'))unlink($root.'/storage/ai-settings.json');
  foreach(rows('SELECT filename FROM images') as $img)if(preg_match('/^[a-f0-9]{40}\.(png|jpg|webp)$/',$img['filename']))@unlink($root.'/storage/images/'.$img['filename']);
  foreach(rows('SELECT filename FROM order_files') as $file)if(preg_match('/^[a-f0-9]{40}\.(pdf|jpg|png)$/',$file['filename']))@unlink($root.'/storage/documents/'.$file['filename']);
  $db->exec('DROP DATABASE IF EXISTS `'.$name.'`');foreach(glob($temp.'/*') as $file)if(is_file($file))unlink($file);rmdir($temp);

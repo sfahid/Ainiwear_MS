@@ -8,6 +8,11 @@ header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style
 $configFile=dirname(__DIR__).'/config.php';
 if(!is_file($configFile)){ http_response_code(503); exit('Setup needed: copy config.example.php to config.php, enter database details, and run bin/create-user.php. See README.md.'); }
 $config=require $configFile;
+$aiSettings=dirname(__DIR__).'/storage/ai-settings.json';
+if(is_file($aiSettings)){
+ $saved=json_decode(file_get_contents($aiSettings),true);
+ if(is_array($saved)&&isset($saved['key'],$saved['model']))$config['ai']=array_replace($config['ai']??[],['key'=>$saved['key'],'model'=>$saved['model']]);
+}
 date_default_timezone_set($config['timezone'] ?? 'Asia/Karachi');
 try {
  $d=$config['db'];

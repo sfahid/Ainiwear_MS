@@ -9,3 +9,5 @@
 !/storage/images/.gitkeep
 /storage/documents/*
 !/storage/documents/.gitkeep
+/storage/ai-settings.json
+/storage/ai-settings-*.tmp

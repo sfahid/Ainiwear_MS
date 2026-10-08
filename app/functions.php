@@ -5,6 +5,7 @@ function rows(string $sql,array $args=[]):array{return q($sql,$args)->fetchAll()
 function one(string $sql,array $args=[]):array {return q($sql,$args)->fetch() ?: [];}
 function go(string $page='dashboard',array $args=[]):never{header('Location: index.php?'.http_build_query(['page'=>$page]+$args));exit;}
 function flash(string $msg):void{$_SESSION['flash']=$msg;}
+function json_reply(array $data,int $status=200):never {http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($data,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);exit;}
 function csrf():void{echo '<input type="hidden" name="csrf" value="'.e($_SESSION['csrf']).'">';}
 function text(string $key,int $max=10000,bool $required=false):string{
  $v=trim((string)($_POST[$key] ?? '')); if(mb_strlen($v)>$max || ($required && $v===''))throw new InvalidArgumentException("Please check $key (maximum $max characters)."); return $v;

@@ -2,7 +2,7 @@
 
 Environment: Windows, PHP 8.3.6, MySQL 8.3.0, PhpSpreadsheet 5.10.0. HTTP integration tests used PHP's localhost development server and a newly created temporary database. The test database, temporary configuration and uploaded test image were removed afterward.
 
-**59 integration checks passed.** All application PHP files passed syntax checks.
+**64 integration checks and 7 AI UI regression checks passed.** All changed application PHP files passed syntax checks.
 
 Verified:
 
@@ -15,6 +15,8 @@ Verified:
 - CSV, XLSX and legacy XLS imports; matching slabs updated; invalid-rate import saved no rows.
 - Cheapest/fastest ranking, exact 5 kg slab boundary, currency isolation.
 - Missing AI configuration handled with a clear message.
+- Missing AI setup returns an immediate JSON error for image requests; expired forms return JSON errors; AI settings save privately without displaying the key. No live key was used in tests.
+- AI UI recovers after configuration errors, network errors, unexpected HTML, timeout and cancellation. Duplicate clicks send a single request; success navigates to the reviewed draft. Run `node tests/ai-ui.js` from the project root.
 - PDF/JPG/PNG order-sheet uploads and authenticated downloads; attachments saved through order data entry; fake PDFs rejected before an order can be partially saved.
 - Saved sheet selector and direct-upload controls in the AI assistant; image and PDF input payloads match their respective API types; saved sheets cannot be selected from a different order; downloads require login.
 - No PHP warnings, fatal errors or SQL errors in the final HTTP test run's server log.
