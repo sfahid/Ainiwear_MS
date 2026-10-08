@@ -7,3 +7,5 @@
 /vendor/
 /storage/images/*
 !/storage/images/.gitkeep
+/storage/documents/*
+!/storage/documents/.gitkeep

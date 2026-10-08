@@ -4,6 +4,7 @@ if(PHP_SAPI!=='cli')exit('CLI only');
 $root=dirname(__DIR__);$cfg=$root.'/config.php';if(is_file($cfg))exit("Use a disposable copy with no config.php.\n");
 require $root.'/vendor/autoload.php';
 require $root.'/app/functions.php';require $root.'/app/shipping.php';
+require $root.'/app/documents.php';
 $port=(int)(getenv('TEST_DB_PORT')?:3306);$user=getenv('TEST_DB_USER')?:'root';$password=getenv('TEST_DB_PASSWORD')?:'';
 $db=new PDO("mysql:host=127.0.0.1;port=$port;charset=utf8mb4",$user,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
 $name='aini_test_'.bin2hex(random_bytes(6));$temp=sys_get_temp_dir().'/'.$name;mkdir($temp);$proc=null;$count=0;
@@ -51,7 +52,19 @@ try{
  $png=$temp.'/product.png';$im=imagecreatetruecolor(30,30);imagepng($im,$png);imagedestroy($im);
  [$code]=request('page=item&id='.$item,['action'=>'image','csrf'=>$csrf,'item_id'=>$item,'image'=>new CURLFile($png,'image/png','product.png')]);check($code===302,'Product image upload');
  $image=(int)$db->query('SELECT MAX(id) FROM images')->fetchColumn();[$code,$body,$info]=request('image='.$image);check($code===200&&$info['content_type']==='image/png'&&substr($body,0,4)==="\x89PNG",'Authenticated image delivery');
+ $jpg=$temp.'/sheet.jpg';$im=imagecreatetruecolor(30,30);imagejpeg($im,$jpg);imagedestroy($im);
+ $pdf=$temp.'/sheet.pdf';file_put_contents($pdf,"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF");
+ foreach([[$png,'image/png','sheet.png'],[$jpg,'image/jpeg','sheet.jpg'],[$pdf,'application/pdf','sheet.pdf']] as [$path,$mime,$filename]){
+  [$code]=request('page=order&id='.$order,['action'=>'order_file','csrf'=>$csrf,'order_id'=>$order,'sheet'=>new CURLFile($path,$mime,$filename)]);check($code===302,'Order sheet upload '.$filename);
+  $fileid=(int)$db->query('SELECT MAX(id) FROM order_files')->fetchColumn();[$code,$download,$meta]=request('file='.$fileid);check($code===200&&$meta['content_type']===$mime&&$download===file_get_contents($path),'Private sheet download '.$filename);
+  $doc=saved_document($fileid,$order);$part=ai_attachment_part($doc);check($part['type']===($mime==='application/pdf'?'input_file':'input_image'),'AI attachment payload '.$filename);
+  try{saved_document($fileid,1);$blocked=false;}catch(InvalidArgumentException $e){$blocked=true;}check($blocked,'Wrong-order sheet access rejected '.$filename);
+ }
+ $withSheet=$orderData;$withSheet['id']=$order;$withSheet['sheet']=new CURLFile($png,'image/png','entry.png');[$code]=request('page=order&id='.$order,$withSheet);check($code===302&&(int)$db->query('SELECT COUNT(*) FROM order_files WHERE order_id='.$order)->fetchColumn()===4,'Order entry saves attachment with order');
+ [$code,$body]=request('page=assistant&order_id='.$order.'&task=extract&file_id='.$fileid);check(str_contains($body,'multipart/form-data')&&str_contains($body,'sheet.pdf')&&str_contains($body,'name="attachment"'),'AI assistant file upload and saved sheet selector');
  $bad=$temp.'/bad.php';file_put_contents($bad,'<?php echo "bad";');[$code,$body]=request('page=item&id='.$item,['action'=>'image','csrf'=>$csrf,'item_id'=>$item,'image'=>new CURLFile($bad,'image/png','fake.png')]);check(str_contains($body,'Use a JPG, PNG or WebP'),'Executable upload rejected');
+ [$code,$body]=request('page=order&id='.$order,['action'=>'order_file','csrf'=>$csrf,'order_id'=>$order,'sheet'=>new CURLFile($bad,'application/pdf','fake.pdf')]);check(str_contains($body,'Only PDF, JPG and PNG'),'Fake PDF sheet rejected');
+ $invalid=$orderData;$invalid['code']='AW-INVALID-FILE';$invalid['sheet']=new CURLFile($bad,'application/pdf','fake.pdf');[$code,$body]=request('page=order',$invalid);check(str_contains($body,'Only PDF, JPG and PNG')&&$db->query("SELECT COUNT(*) FROM orders WHERE code='AW-INVALID-FILE'")->fetchColumn()==0,'Invalid order attachment prevents partial order save');
  $csv=file_get_contents($root.'/public/samples/shipping-rates.csv');
  file_put_contents($temp.'/rates.csv',$csv);[$code]=request('page=shipping',['action'=>'import_rates','csrf'=>$csrf,'rates'=>new CURLFile($temp.'/rates.csv','text/csv','rates.csv')]);check($code===302&&(int)$db->query('SELECT COUNT(*) FROM shipping_rates')->fetchColumn()===3,'CSV import updates matching slabs');
  $sheetData=array_map('str_getcsv',array_filter(explode("\n",trim($csv))));
@@ -63,6 +76,7 @@ try{
  [$code,$body]=request('page=assistant&item_id='.$item,['action'=>'ai','csrf'=>$csrf,'item_id'=>$item,'order_id'=>$order,'task'=>'steps','input'=>'Suggest steps']);check(str_contains($body,'AI is not configured'),'AI disabled state');
  $built=suggestions(['name'=>'Jersey','fabric'=>'knit','requirements'=>'sublimation embroidered logo'],[],rows('SELECT * FROM step_templates ORDER BY position'));check(in_array('Knitting',$built)&&in_array('Sublimation',$built)&&in_array('Logo preparation',$built),'Offline production suggestions');
  [$code]=request('', ['action'=>'logout','csrf'=>$csrf]);check($code===302,'Logout');[$code,$body]=request('image='.$image);check(!str_starts_with($body,"\x89PNG"),'Images require login');
+ [$code,$body]=request('file='.$fileid);check(!str_starts_with($body,'%PDF-')&&str_contains($body,'Sign in to your workspace'),'Order files require login');
  $log=file_get_contents($temp.'/server.log');check(!preg_match('/PHP (Fatal|Warning|Parse)|Uncaught|SQLSTATE/',$log),'No PHP or SQL runtime errors in server log');
  echo "\n$count checks passed.\n";
 }catch(Throwable $e){fwrite(STDERR,$e->getMessage()."\n");$failed=true;if(is_file($temp.'/server.log'))fwrite(STDERR,file_get_contents($temp.'/server.log'));}
@@ -70,6 +84,7 @@ finally{
  if(is_resource($proc)){proc_terminate($proc);proc_close($proc);}
  if(is_file($cfg))unlink($cfg);
  foreach(rows('SELECT filename FROM images') as $img)if(preg_match('/^[a-f0-9]{40}\.(png|jpg|webp)$/',$img['filename']))@unlink($root.'/storage/images/'.$img['filename']);
+ foreach(rows('SELECT filename FROM order_files') as $file)if(preg_match('/^[a-f0-9]{40}\.(pdf|jpg|png)$/',$file['filename']))@unlink($root.'/storage/documents/'.$file['filename']);
  $db->exec('DROP DATABASE IF EXISTS `'.$name.'`');foreach(glob($temp.'/*') as $file)if(is_file($file))unlink($file);rmdir($temp);
 }
 exit(!empty($failed)?1:0);

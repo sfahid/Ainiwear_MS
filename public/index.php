@@ -3,6 +3,14 @@ require dirname(__DIR__).'/app/bootstrap.php';
 $page=(string)($_GET['page']??'dashboard');
 if(empty($_SESSION['user']))$page='login';
 require dirname(__DIR__).'/app/actions.php';
+if(isset($_GET['file'])&&!empty($_SESSION['user'])){
+ $file=one('SELECT * FROM order_files WHERE id=?',[(int)$_GET['file']]);
+ if(!$file){http_response_code(404);exit;}
+ try{$file=saved_document((int)$file['id'],(int)$file['order_id']);}catch(Throwable $e){http_response_code(404);exit;}
+ header('Content-Type: '.$file['mime']);
+ header('Content-Disposition: attachment; filename="order-sheet.'.pathinfo($file['filename'],PATHINFO_EXTENSION).'"; filename*=UTF-8\'\''.rawurlencode($file['original_name']));
+ header('Content-Length: '.filesize($file['path']));readfile($file['path']);exit;
+}
 $allowed=['login','dashboard','customers','orders','order','item','settings','shipping','calendar','assistant'];
 if(!in_array($page,$allowed,true)){http_response_code(404);$page='dashboard';$error='Page not found.';}
 // Authenticated image delivery; uploaded files live outside the public directory.

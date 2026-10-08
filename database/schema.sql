@@ -69,3 +69,14 @@ CREATE TABLE shipping_rates (
  valid_until DATE NULL, active TINYINT(1) NOT NULL DEFAULT 1,
  UNIQUE KEY rate_key(courier,service,destination,currency,min_kg,max_kg), INDEX(destination)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS order_files (
+ id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ order_id INT UNSIGNED NOT NULL,
+ filename VARCHAR(100) NOT NULL,
+ original_name VARCHAR(255) NOT NULL,
+ mime VARCHAR(40) NOT NULL,
+ bytes INT UNSIGNED NOT NULL,
+ created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+) ENGINE=InnoDB;

@@ -15,6 +15,7 @@ try {
  $db->exec("SET time_zone = '+05:00'");
 } catch(Throwable $e){error_log($e->getMessage()); http_response_code(503); exit('Database unavailable. Check config.php and import database/schema.sql.');}
 require __DIR__.'/functions.php';
+require __DIR__.'/documents.php';
 require __DIR__.'/shipping.php';
 require __DIR__.'/ai.php';
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));

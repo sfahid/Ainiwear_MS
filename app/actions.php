@@ -18,11 +18,17 @@ try {
   if(!empty($_POST['id'])){$id=integer('id');must('customers',$id);q('UPDATE customers SET name=?,email=?,phone=?,country=?,address=? WHERE id=?',[...$data,$id]);}else q('INSERT INTO customers(name,email,phone,country,address) VALUES(?,?,?,?,?)',$data);
   flash('Customer saved.');go('customers');
  case 'order':
+  $document=null;if(isset($_FILES['sheet'])&&$_FILES['sheet']['error']!==UPLOAD_ERR_NO_FILE)$document=validate_document($_FILES['sheet']);
   $customer=integer('customer_id');must('customers',$customer);$orderdate=dateval('order_date');if(!$orderdate)throw new InvalidArgumentException('Order date is required.');
   $due=dateval('due_date');$ship=dateval('ship_date');if(($due&&$due<$orderdate)||($ship&&$due&&$ship<$due))throw new InvalidArgumentException('Completion date must follow order date; shipping date must follow completion date.');
   $data=[text('code',80,true),$customer,choice('status',['draft','confirmed','production','ready','shipped','cancelled']),$orderdate,$due,$ship,choice('priority',['normal','high','urgent']),text('destination',100),text('tracking',200),text('details')];
-  if(!empty($_POST['id'])){$id=integer('id');must('orders',$id);q('UPDATE orders SET code=?,customer_id=?,status=?,order_date=?,due_date=?,ship_date=?,priority=?,destination=?,tracking=?,details=? WHERE id=?',[...$data,$id]);}else{q('INSERT INTO orders(code,customer_id,status,order_date,due_date,ship_date,priority,destination,tracking,details) VALUES(?,?,?,?,?,?,?,?,?,?)',$data);$id=(int)$db->lastInsertId();}
+  $savedPath=null;$db->beginTransaction();try{
+   if(!empty($_POST['id'])){$id=integer('id');must('orders',$id);q('UPDATE orders SET code=?,customer_id=?,status=?,order_date=?,due_date=?,ship_date=?,priority=?,destination=?,tracking=?,details=? WHERE id=?',[...$data,$id]);}else{q('INSERT INTO orders(code,customer_id,status,order_date,due_date,ship_date,priority,destination,tracking,details) VALUES(?,?,?,?,?,?,?,?,?,?)',$data);$id=(int)$db->lastInsertId();}
+   if($document)$savedPath=order_file_save($id,$document);$db->commit();
+  }catch(Throwable $e){$db->rollBack();if($savedPath&&is_file($savedPath))unlink($savedPath);throw $e;}
   flash('Order saved.');go('order',['id'=>$id]);
+ case 'order_file':
+  $id=integer('order_id');must('orders',$id);order_file_save($id,validate_document($_FILES['sheet']??[]));flash('Order / product sheet uploaded.');go('order',['id'=>$id]);
  case 'item':
   $order=integer('order_id');must('orders',$order);$data=[text('name',160,true),text('sku',100),integer('quantity'),text('fabric',200),text('colors',200),text('sizes'),text('requirements'),dateval('due_date')];
   $db->beginTransaction();try{
@@ -63,8 +69,13 @@ try {
   $context=[];$itemid=(int)($_POST['item_id']??0);$orderid=(int)($_POST['order_id']??0);
   if($itemid){$context['item']=must('items',$itemid);$orderid=(int)$context['item']['order_id'];$context['components']=rows('SELECT c.*,t.name type_name FROM components c JOIN component_types t ON t.id=c.type_id WHERE item_id=?',[$itemid]);$context['steps']=rows('SELECT * FROM item_steps WHERE item_id=? ORDER BY position,id',[$itemid]);}
   if($orderid){$context['order']=must('orders',$orderid);$context['customer']=one('SELECT name,country FROM customers WHERE id=?',[$context['order']['customer_id']]);$context['notes']=rows('SELECT body,followup_date,done FROM notes WHERE order_id=? ORDER BY id DESC LIMIT 20',[$orderid]);if(!$itemid){$context['items']=rows('SELECT * FROM items WHERE order_id=?',[$orderid]);$context['steps']=rows('SELECT s.*,i.name item_name FROM item_steps s JOIN items i ON i.id=s.item_id WHERE i.order_id=? ORDER BY i.id,s.position',[$orderid]);$context['components']=rows('SELECT c.*,t.name type_name,i.name item_name FROM components c JOIN component_types t ON t.id=c.type_id JOIN items i ON i.id=c.item_id WHERE i.order_id=?',[$orderid]);}}
+  $attachment=null;$hasUpload=isset($_FILES['attachment'])&&$_FILES['attachment']['error']!==UPLOAD_ERR_NO_FILE;
+  $fileid=(int)($_POST['file_id']??0);
+  if($hasUpload&&$fileid)throw new InvalidArgumentException('Choose either a new upload or a saved order sheet, not both.');
+  if($hasUpload)$attachment=validate_document($_FILES['attachment']);
+  elseif($fileid){if(!$orderid)throw new InvalidArgumentException('Select a linked order first.');$attachment=saved_document($fileid,$orderid);}
   $_SESSION['ai_after']=time()+10;
-  $task=text('task',20,true);$draft=ai_draft($task,text('input',12000),$context);
+  $task=text('task',20,true);$draft=ai_draft($task,text('input',12000),$context,$attachment);
   $_SESSION['ai_draft']=['text'=>$draft,'task'=>$task,'item_id'=>$itemid,'order_id'=>$orderid];go('assistant',['item_id'=>$itemid,'order_id'=>$orderid]);
  default:throw new InvalidArgumentException('Unknown action.');
  }
