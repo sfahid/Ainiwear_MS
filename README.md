@@ -1,6 +1,6 @@
 # Aini Wear — Production Manager
 
-A small, desktop-first PHP/MySQL app for garment orders. No frontend build, CDN, framework or internet connection is needed for ordinary work. The ZIP includes the Excel-reader dependencies. Optional AI requires internet and your own API key/model.
+A small, desktop-first PHP/MySQL app for garment orders. No frontend build, CDN, framework or internet connection is needed for ordinary work. Optional AI uses an eligible ChatGPT subscription or a separately billed OpenAI API key.
 
 ## Installing from GitHub
 
@@ -99,9 +99,11 @@ These are estimates from uploaded rates, not live courier quotes or bookings. Ta
 
 ## Optional AI
 
-In `config.php`, set `ai.key` and `ai.model` to a key and an available Responses-compatible model in your own OpenAI account (or use the `OPENAI_API_KEY` / `OPENAI_MODEL` environment variables already wired in the example). Model is deliberately blank until you select one. The default endpoint is `https://api.openai.com/v1/responses`. Calls follow the [official Responses API reference](https://developers.openai.com/api/reference/python/resources/responses/methods/create), use HTTPS, a server-side key, a timeout and `store=false`.
+**ChatGPT subscription:** On the WAMP PC, open **Settings → AI setup → Continue with ChatGPT**. Complete OpenAI sign-in and authorize ChatGPT plan usage. Return to Aini Wear, refresh, select **ChatGPT subscription**, load available models if needed, and save. The official open-source OAuth flow uses a `127.0.0.1` callback, PKCE, signed ID-token validation, private per-staff tokens, and serialized token renewal. The callback is `http://127.0.0.1:<Apache port>/<app public path>/chatgpt.php`; keep this path unchanged for returning sign-ins. Eligible plans and limits are controlled by OpenAI. Keep credit spending disabled in ChatGPT's app usage settings if you want subscription-only usage. See [official plan integration](https://developers.openai.com/siwc/token-sharing-open-source).
 
-You can also enter these through **Settings → AI setup**. Saved settings override config.php's key/model and live in private `storage/ai-settings.json`, excluded from Git. All logged-in staff can change AI settings in this MVP. Keys are never redisplayed; leave the key field blank to keep the saved key. Keep this file private in backups.
+**Optional paid API:** Select OpenAI API in Settings and enter an API key and available Responses model. This route requires separate API credits. The app never automatically falls back from the subscription to the API. Both routes use HTTPS and `store=false`; subscription requests also use streaming and omit unsupported output-limit fields.
+
+Saved service/model settings override config.php and live in private `storage/ai-settings.json`, excluded from Git. All logged-in staff can change the service/model in this MVP. Keys are never redisplayed; leave the key field blank to keep the saved key. Each staff login has its own ChatGPT connection in private `storage/chatgpt`, also excluded from Git. Protect both locations in backups. Manage or revoke access at https://chatgpt.com/settings/usage. This integration does not import existing Codex credentials or browser cookies.
 
 For an image containing instructions, select **Read and follow sheet instructions**, attach the image, and generate a draft. Requests have a 45-second provider timeout, a 55-second browser wait limit, an elapsed-time indicator and Cancel wait. No automatic retries occur. Errors restore the Generate button and preserve the selected file. Cancellation stops the browser wait; a request already sent to the provider may still finish and incur usage, but it never applies changes to an order. Existing text tasks remain available.
 

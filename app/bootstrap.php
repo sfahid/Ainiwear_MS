@@ -11,7 +11,7 @@ $config=require $configFile;
 $aiSettings=dirname(__DIR__).'/storage/ai-settings.json';
 if(is_file($aiSettings)){
  $saved=json_decode(file_get_contents($aiSettings),true);
- if(is_array($saved)&&isset($saved['key'],$saved['model']))$config['ai']=array_replace($config['ai']??[],['key'=>$saved['key'],'model'=>$saved['model']]);
+ if(is_array($saved)&&isset($saved['key'],$saved['model']))$config['ai']=array_replace($config['ai']??[],['key'=>$saved['key'],'model'=>$saved['model'],'provider'=>$saved['provider']??'openai']);
 }
 date_default_timezone_set($config['timezone'] ?? 'Asia/Karachi');
 try {
@@ -23,4 +23,5 @@ require __DIR__.'/functions.php';
 require __DIR__.'/documents.php';
 require __DIR__.'/shipping.php';
 require __DIR__.'/ai.php';
+require __DIR__.'/chatgpt.php';
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));

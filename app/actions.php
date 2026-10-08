@@ -13,13 +13,19 @@ try {
  if(empty($_SESSION['user'])){if($aiJson)json_reply(['ok'=>false,'error'=>'Sign in again before using AI.'],401);go('login');}
  if($action==='logout'){$_SESSION=[];session_destroy();go('login');}
  switch($action){
+ case 'chatgpt_connect':chatgpt_start();
+ case 'chatgpt_models':
+  $catalog=chatgpt_http('https://api.openai.com/v1/models',null,chatgpt_access((int)$_SESSION['user']['id']));
+  $_SESSION['chatgpt_models']=array_values(array_filter($catalog['models']??[],fn($m)=>($m['visibility']??'')==='list'&&isset($m['slug'])));
+  flash('Available ChatGPT models loaded. Choose a Model ID from the suggestions below.');go('settings');
  case 'ai_settings':
+  $provider=isset($_POST['provider'])?choice('provider',['openai','chatgpt']):'openai';
   $key=text('api_key',512);$model=text('model',100,true);
   if(!preg_match('/^[a-zA-Z0-9_.:\/-]+$/',$model))throw new InvalidArgumentException('Enter a valid model ID from your API account.');
   if($key==='')$key=$config['ai']['key']??'';
-  if($key===''||preg_match('/\s/',$key))throw new InvalidArgumentException('Enter your API key without spaces.');
+  if($provider==='openai'&&($key===''||preg_match('/\s/',$key)))throw new InvalidArgumentException('Enter your API key without spaces.');
   $path=dirname(__DIR__).'/storage/ai-settings.json';$temp=dirname(__DIR__).'/storage/ai-settings-'.bin2hex(random_bytes(6)).'.tmp';
-  if(file_put_contents($temp,json_encode(['key'=>$key,'model'=>$model],JSON_THROW_ON_ERROR),LOCK_EX)===false)throw new RuntimeException('Could not save AI settings. Check storage folder permissions.');
+  if(file_put_contents($temp,json_encode(['key'=>$key,'model'=>$model,'provider'=>$provider],JSON_THROW_ON_ERROR),LOCK_EX)===false)throw new RuntimeException('Could not save AI settings. Check storage folder permissions.');
   chmod($temp,0600);if(!rename($temp,$path)){unlink($temp);throw new RuntimeException('Could not save AI settings.');}
   flash('AI settings saved. Open the assistant to test your model with a small file.');go('assistant');
  case 'customer':

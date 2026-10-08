@@ -4,6 +4,10 @@ Environment: Windows, PHP 8.3.6, MySQL 8.3.0, PhpSpreadsheet 5.10.0. HTTP integr
 
 **64 integration checks and 7 AI UI regression checks passed.** All changed application PHP files passed syntax checks.
 
+ChatGPT subscription integration: 14 offline checks cover signed identity acceptance, issuer/audience/nonce/expiry/subject validation, forged signature rejection, unsafe state paths, completed SSE streams, failure/incomplete events, and interrupted streams. Run `php tests/chatgpt.php`. Composer uses firebase/php-jwt 7.2.1 with no reported security advisories. End-to-end subscription inference requires the user's browser sign-in and plan consent and remains unverified until that is completed.
+
+Live WAMP checks confirm authenticated sign-in routes through the loopback handoff with PKCE and the plan scope, invalid callbacks return HTTP 400, normal app pages still render, and private files remain blocked. All 64 integration checks and 7 interface checks were rerun after the subscription change.
+
 Verified:
 
 - Login, logout, authentication guard and CSRF rejection.

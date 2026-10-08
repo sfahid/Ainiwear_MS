@@ -2,6 +2,9 @@
 function ai_require_config():array {
  global $config;
  $ai=$config['ai']??[];
+ if(($ai['provider']??'openai')==='chatgpt'){
+  $ai['key']=chatgpt_access((int)($_SESSION['user']['id']??0));$ai['endpoint']='https://api.openai.com/v1/responses';
+ }
  if(empty($ai['key'])||empty($ai['model']))throw new InvalidArgumentException('AI is not configured. Open Settings → AI setup and enter your API key and a model that supports images/PDFs.');
  return $ai;
 }
@@ -24,6 +27,8 @@ function ai_draft(string $task,string $input,array $context,?array $attachment=n
  $parts=[['type'=>'input_text','text'=>$tasks[$task]."\nUSER TEXT:\n".$input."\nCONTEXT:\n".$contextJson]];
  if($attachment)$parts[]=ai_attachment_part($attachment);
  $body=['model'=>$ai['model'],'store'=>false,'instructions'=>$instructions,'input'=>[['role'=>'user','content'=>$parts]],'max_output_tokens'=>2400];
+ $subscription=($ai['provider']??'openai')==='chatgpt';
+ if($subscription){unset($body['max_output_tokens']);$body['stream']=true;}
  $ch=curl_init($ai['endpoint']??'https://api.openai.com/v1/responses');
  // WAMP may need an explicit CA bundle; retain certificate verification.
  $caBundle=__DIR__.'/../storage/certs/cacert.pem';
@@ -35,13 +40,13 @@ function ai_draft(string $task,string $input,array $context,?array $attachment=n
   $provider=json_decode($raw,true);$code=$provider['error']['code']??'';
   $quotaError=($provider['error']['type']??'')==='insufficient_quota'||in_array($code,['insufficient_quota','credit_balance_exhausted','billing_hard_limit_reached','organization_usage_limit_exceeded'],true);
   $message=match($status){
-   401=>'The AI API key was rejected. Replace it in Settings → AI setup.',
-   403=>'Your API account cannot access this model. Choose an available model in Settings.',
-   429=>$quotaError?'Your OpenAI API account has no available credits or has reached its spending limit. Open platform.openai.com/settings/organization/billing/ to check credits and limits, then retry. Waiting alone will not resolve this.':'The AI service is rate-limited. Wait a little before retrying.',
+   401=>$subscription?'Your ChatGPT connection expired or was revoked. Open Settings and Continue with ChatGPT again.':'The AI API key was rejected. Replace it in Settings → AI setup.',
+   403=>$subscription?'Your ChatGPT plan cannot access this model or app. Check app permissions and load available models in Settings.':'Your API account cannot access this model. Choose an available model in Settings.',
+   429=>$subscription?'Your ChatGPT plan usage limit was reached. Check chatgpt.com/settings/usage and retry when your allowance resets. No paid API fallback was attempted.':($quotaError?'Your OpenAI API account has no available credits or has reached its spending limit. Open platform.openai.com/settings/organization/billing/ to check credits and limits, then retry. Waiting alone will not resolve this.':'The AI service is rate-limited. Wait a little before retrying.'),
    400,404=>'The AI model or file request was rejected. Check the model ID and its image/PDF support in Settings; try a smaller, readable file.',
    default=>'AI service is unavailable (HTTP '.$status.'). Retry later. No records were changed.'
   };throw new RuntimeException($message);
  }
- $data=json_decode($raw,true,512,JSON_THROW_ON_ERROR);$out=[];foreach($data['output']??[] as $o)foreach($o['content']??[] as $p)if(($p['type']??'')==='output_text')$out[]=$p['text'];
+ $data=$subscription?chatgpt_stream_result($raw):json_decode($raw,true,512,JSON_THROW_ON_ERROR);$out=[];foreach($data['output']??[] as $o)foreach($o['content']??[] as $p)if(($p['type']??'')==='output_text')$out[]=$p['text'];
  $result=trim(implode("\n",$out));if($result===''||($data['status']??'')!=='completed')throw new RuntimeException('AI returned an incomplete draft. Try shorter input.');return $result;
 }

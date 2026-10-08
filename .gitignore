@@ -10,4 +10,5 @@
 /storage/documents/*
 !/storage/documents/.gitkeep
 /storage/ai-settings.json
+/storage/chatgpt/
 /storage/ai-settings-*.tmp
