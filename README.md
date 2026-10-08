@@ -143,3 +143,12 @@ Common setup issues: wrong MySQL/MariaDB port; PHP CLI version differs from Apac
 New and existing order forms accept PDF/JPG/PNG sheets up to 5 MB each. Saved sheets can be downloaded by signed-in staff and selected for AI extraction. Direct AI uploads are temporary and are not saved with the order. AI never fills or changes records automatically: review the extracted draft and copy it into the fields or save it as a note. Use a model with PDF/image input support. Unreadable details are marked as uncertain.
 
 For an existing installation, import `database/migrations/002_order_files.sql` into its configured database using a database administrator, and create writable `storage/documents`. New installations include this table in schema.sql. File inputs follow [OpenAI's official file-input guide](https://developers.openai.com/api/docs/guides/file-inputs).
+
+
+Shipping per-kg pricing
+
+New installations include `shipping_rates.rate_basis`. Existing installations must run `database/shipping-per-kg.sql` once before deploying this version. WAMP was migrated in place with existing prices kept as flat totals.
+
+The original nine import headers remain supported. Add an optional tenth header, `rate_basis`, with `flat` or `per_kg`. A per-kg quote multiplies the entered chargeable weight by the unit rate, without rounding weight. Per-kg ranges include both bounds; flat slabs exclude the lower bound. Compare prices using shipment totals, not unit rates. Courier, supplier/service, route, duty status, category and postal zone must have distinct service/destination labels when their tariffs differ. Incremental and conditional surcharges are separate from total or per-kg prices.
+
+Run `php tests/shipping-per-kg.php` to verify legacy defaults, per-kg totals, fractional weights, invalid pricing methods and total-price ranking.
