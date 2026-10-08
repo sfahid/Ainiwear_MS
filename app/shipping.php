@@ -1,4 +1,6 @@
 <?php
+const SHIPPING_IMPORT_MAX_ROWS=50000;
+const SHIPPING_IMPORT_MAX_BYTES=20*1024*1024;
 function rate_validate(array $r,int $line=0):array {
  $prefix=$line?"Row $line: ":'';
  $required=['courier','service','destination','currency','min_kg','max_kg','rate','transit_days'];
@@ -16,24 +18,25 @@ function save_rate(array $r):void{
 }
 function import_rates(array $f):int{
  global $db;
- if(($f['error']??1)!==UPLOAD_ERR_OK||($f['size']??0)>5*1024*1024)throw new InvalidArgumentException('Upload a rate file under 5 MB.');
+ set_time_limit(180);
+ if(($f['error']??1)!==UPLOAD_ERR_OK||($f['size']??0)>SHIPPING_IMPORT_MAX_BYTES)throw new InvalidArgumentException('Upload a rate file up to 20 MB.');
  $ext=strtolower(pathinfo($f['name'],PATHINFO_EXTENSION));$data=[];
  if($ext==='csv'){
   $h=fopen($f['tmp_name'],'r');if(!$h)throw new RuntimeException('Cannot read file.');
-  try{while(($r=fgetcsv($h,0,',','"',''))!==false){$data[]=$r;if(count($data)>2001)throw new InvalidArgumentException('Maximum 2000 data rows.');}}finally{fclose($h);}
+  try{while(($r=fgetcsv($h,0,',','"',''))!==false){$data[]=$r;if(count($data)>SHIPPING_IMPORT_MAX_ROWS+1)throw new InvalidArgumentException('Maximum 50,000 data rows.');}}finally{fclose($h);}
  }elseif(in_array($ext,['xls','xlsx'],true)){
   $autoload=dirname(__DIR__).'/vendor/autoload.php';if(!is_file($autoload))throw new InvalidArgumentException('Excel support requires Composer install (see README). CSV works without it.');require_once $autoload;
   // Select the reader explicitly: never treat an uploaded spreadsheet as HTML.
   $reader=\PhpOffice\PhpSpreadsheet\IOFactory::createReader($ext==='xls'?'Xls':'Xlsx');
   $reader->setReadDataOnly(true);
   $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
-   public function readCell(string $columnAddress,int $row,string $worksheetName=''):bool{return $row<=2002 && in_array($columnAddress,['A','B','C','D','E','F','G','H','I'],true);}
+   public function readCell(string $columnAddress,int $row,string $worksheetName=''):bool{return $row<=SHIPPING_IMPORT_MAX_ROWS+2 && in_array($columnAddress,['A','B','C','D','E','F','G','H','I'],true);}
   });
   $info=$reader->listWorksheetInfo($f['tmp_name']);
-  if(($info[0]['totalRows']??0)>2001||($info[0]['totalColumns']??0)>9)throw new InvalidArgumentException('First sheet must have at most 2000 data rows and 9 columns.');
+  if(($info[0]['totalRows']??0)>SHIPPING_IMPORT_MAX_ROWS+1||($info[0]['totalColumns']??0)>9)throw new InvalidArgumentException('First sheet must have at most 50,000 data rows and 9 columns.');
   $reader->setLoadSheetsOnly($info[0]['worksheetName']);
   $book=$reader->load($f['tmp_name']);$sheet=$book->getSheet(0);
-  if($sheet->getHighestDataRow()>2001)throw new InvalidArgumentException('Maximum 2000 data rows.');
+  if($sheet->getHighestDataRow()>SHIPPING_IMPORT_MAX_ROWS+1)throw new InvalidArgumentException('Maximum 50,000 data rows.');
   $data=$sheet->rangeToArray('A1:I'.$sheet->getHighestDataRow(),null,false,false,false);$book->disconnectWorksheets();
  }else throw new InvalidArgumentException('Use CSV, XLS or XLSX.');
  if(!$data)throw new InvalidArgumentException('Empty file.');
@@ -46,9 +49,11 @@ function import_rates(array $f):int{
   $r=rate_validate(array_combine($expected,array_pad($row,9,'')),$i+2);
   $key=mb_strtolower(implode('|',array_map(fn($k)=>(string)$r[$k],array_slice($expected,0,6))));
   if(isset($keys[$key]))throw new InvalidArgumentException('Row '.($i+2).': duplicate slab in this file.');$keys[$key]=true;$valid[]=$r;
+  unset($data[$i]);
  }
  if(!$valid)throw new InvalidArgumentException('No rates found.');
- $db->beginTransaction();try{foreach($valid as $r)save_rate($r);$db->commit();}catch(Throwable $e){$db->rollBack();throw $e;}return count($valid);
+ $statement=$db->prepare('INSERT INTO shipping_rates(courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE rate=VALUES(rate),transit_days=VALUES(transit_days),valid_until=VALUES(valid_until),active=1');
+ $db->beginTransaction();try{foreach($valid as $r)$statement->execute(array_map(fn($k)=>$r[$k],$expected));$db->commit();}catch(Throwable $e){$db->rollBack();throw $e;}return count($valid);
 }
 function rank_rates(array $rates,float $speedWeight):array{
  if(!$rates)return [];
