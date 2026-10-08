@@ -10,6 +10,37 @@ document.addEventListener('submit', async event => {
  const form = event.target;
  const button = event.submitter;
  if (!button) return;
+ if (form.querySelector('[name="action"]')?.value === 'chatgpt_connect') {
+  event.preventDefault();
+  if (form.dataset.busy === 'true') return;
+  const status = document.getElementById('chatgpt-status');
+  const link = document.getElementById('chatgpt-link');
+  const label = button.textContent;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  form.dataset.busy = 'true'; button.disabled = true;
+  button.textContent = 'Preparing sign-in…';
+  status.hidden = false; status.className = 'alert';
+  status.textContent = 'Preparing your ChatGPT sign-in link…'; link.hidden = true;
+  try {
+   const response = await fetch(form.getAttribute('action') || window.location.href, {
+    method:'POST',body:new FormData(form),headers:{Accept:'application/json'},signal:controller.signal
+   });
+   if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Sign-in could not start. Reload Aini Wear and try again.');
+   const result = await response.json();
+   if (!response.ok || !result.ok) throw new Error(result.error || 'Sign-in could not start.');
+   const url = new URL(result.url);
+   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.pathname.endsWith('/chatgpt.php')) throw new Error('Invalid sign-in address.');
+   link.href = url.href; link.hidden = false;
+   status.textContent = 'Sign-in is ready. Click Open ChatGPT sign-in below. If this app blocks the new tab, copy the link and paste it into Chrome or Edge. After authorizing Aini Wear, return here and refresh.';
+  } catch (error) {
+   status.className = 'alert error';
+   status.textContent = error.name === 'AbortError' ? 'Sign-in preparation timed out. Reload and try again.' : error.message;
+  } finally {
+   clearTimeout(timer);form.dataset.busy = 'false';button.disabled = false;button.textContent = label;
+  }
+  return;
+ }
  if (form.querySelector('[name="action"]')?.value !== 'ai') {
   button.disabled = true;
   button.textContent = 'Saving…';

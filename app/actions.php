@@ -2,7 +2,7 @@
 if($_SERVER['REQUEST_METHOD']!=='POST')return;
 if(!hash_equals($_SESSION['csrf'],(string)($_POST['csrf']??''))){if(str_contains($_SERVER['HTTP_ACCEPT']??'','application/json'))json_reply(['ok'=>false,'error'=>'Your session or form expired. Reload the page and sign in again.'],403);http_response_code(403);exit('Expired form. Reload and try again.');}
 $action=text('action',40,true);
-$aiJson=$action==='ai'&&str_contains($_SERVER['HTTP_ACCEPT']??'','application/json');
+$aiJson=in_array($action,['ai','chatgpt_connect'],true)&&str_contains($_SERVER['HTTP_ACCEPT']??'','application/json');
 try {
  if($action==='login'){
   if(time()<($_SESSION['login_after']??0))throw new InvalidArgumentException('Please wait a few seconds before trying again.');

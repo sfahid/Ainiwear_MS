@@ -8,6 +8,8 @@ ChatGPT subscription integration: 14 offline checks cover signed identity accept
 
 Live WAMP checks confirm authenticated sign-in routes through the loopback handoff with PKCE and the plan scope, invalid callbacks return HTTP 400, normal app pages still render, and private files remain blocked. All 64 integration checks and 7 interface checks were rerun after the subscription change.
 
+Six sign-in interface checks (`node tests/chatgpt-ui.js`) cover the visible browser link, duplicate clicks, network errors, timeout, unexpected HTML, and unsafe returned addresses. Sign-in uses JSON preparation followed by a visible user-clicked link to avoid silent in-app browser redirect blocking.
+
 Verified:
 
 - Login, logout, authentication guard and CSRF rejection.

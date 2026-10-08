@@ -48,7 +48,9 @@ function chatgpt_start():never {
  $callback='http://127.0.0.1:'.(int)($_SERVER['SERVER_PORT']??80).$base.'/chatgpt.php';
  $pending=['user'=>$user,'expires'=>time()+600,'state'=>$state,'nonce'=>bin2hex(random_bytes(32)),'verifier'=>$verifier,'callback'=>$callback,'host'=>$host,'client'=>$old['client_id']??'dynamic_agent_client','subject'=>$old['subject']??null,'cookie'=>bin2hex(random_bytes(32))];
  chatgpt_write(chatgpt_dir().'/pending-'.$state.'.json',$pending);
- header('Location: '.$callback.'?begin='.$state);exit;
+ $url=$callback.'?begin='.$state;
+ if(str_contains($_SERVER['HTTP_ACCEPT']??'','application/json'))json_reply(['ok'=>true,'url'=>$url]);
+ header('Location: '.$url);exit;
 }
 function chatgpt_pending(string $state):array {
  if(!preg_match('/^[a-f0-9]{64}$/',$state))throw new RuntimeException('Invalid sign-in state.');
