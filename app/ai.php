@@ -33,10 +33,11 @@ function ai_draft(string $task,string $input,array $context,?array $attachment=n
  if($raw===false){error_log('AI connection: '.$error);throw new RuntimeException($errno===CURLE_OPERATION_TIMEDOUT?'AI did not respond within 45 seconds. Try a smaller image or fewer PDF pages. No records were changed.':'AI connection failed. Check Internet access and PHP TLS certificate settings.');}
  if($status<200||$status>=300){
   $provider=json_decode($raw,true);$code=$provider['error']['code']??'';
+  $quotaError=($provider['error']['type']??'')==='insufficient_quota'||in_array($code,['insufficient_quota','credit_balance_exhausted','billing_hard_limit_reached','organization_usage_limit_exceeded'],true);
   $message=match($status){
    401=>'The AI API key was rejected. Replace it in Settings → AI setup.',
    403=>'Your API account cannot access this model. Choose an available model in Settings.',
-   429=>$code==='insufficient_quota'?'Your AI API account has no available quota. Check API billing/credits, then retry.':'The AI service is rate-limited. Wait a little before retrying.',
+   429=>$quotaError?'Your OpenAI API account has no available credits or has reached its spending limit. Open platform.openai.com/settings/organization/billing/ to check credits and limits, then retry. Waiting alone will not resolve this.':'The AI service is rate-limited. Wait a little before retrying.',
    400,404=>'The AI model or file request was rejected. Check the model ID and its image/PDF support in Settings; try a smaller, readable file.',
    default=>'AI service is unavailable (HTTP '.$status.'). Retry later. No records were changed.'
   };throw new RuntimeException($message);
