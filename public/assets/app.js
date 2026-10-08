@@ -100,3 +100,34 @@ document.addEventListener('submit', async event => {
 window.addEventListener('pageshow', event => {
  if (event.persisted) window.location.reload();
 });
+
+// Filter a native destination selector using the saved rate list.
+{
+ const search=document.getElementById('shipping-search');
+ const destination=document.getElementById('shipping-destination');
+ const currency=document.getElementById('shipping-currency');
+ if(search && destination && currency){
+  const options=Array.from(destination.options).slice(1).map(option=>option.cloneNode(true));
+  const status=document.getElementById('shipping-search-status');
+  const aliases={'united states':'usa us america','united kingdom':'uk britain england','united arab emirates':'uae dubai','china':'cn','hong kong':'hk','canada':'ca','australia':'au','new zealand':'nz'};
+  const synchronizeCurrency=()=>{
+   const supported=(destination.selectedOptions[0]?.dataset.currencies||'').split(',').filter(Boolean);
+   for(const option of currency.options)option.disabled=supported.length>0 && !supported.includes(option.value);
+   if(supported.length && !supported.includes(currency.value))currency.value=supported.includes('PKR')?'PKR':supported[0];
+  };
+  search.addEventListener('input',()=>{
+   const query=search.value.trim().toLowerCase();const previous=destination.value;
+   const matches=options.filter(option=>{
+    const name=option.textContent.toLowerCase();
+    const keywords=Object.entries(aliases).filter(([key])=>name.includes(key)).map(([,value])=>value).join(' ');
+    return (name+' '+keywords).includes(query);
+   });
+   destination.replaceChildren(new Option(matches.length?'Select destination':'No matching destinations',''),...matches.map(option=>option.cloneNode(true)));
+   if(matches.some(option=>option.value===previous))destination.value=previous;
+   else if(matches.length===1)destination.value=matches[0].value;
+   status.textContent=matches.length?`${matches.length} destinations found. Choose a destination below.`:'No match. Try another country name.';
+   synchronizeCurrency();
+  });
+  destination.addEventListener('change',synchronizeCurrency);synchronizeCurrency();
+ }
+}
