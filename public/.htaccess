@@ -1,0 +1,8 @@
+Require all granted
+Options -Indexes
+<Files .user.ini>
+    Require all denied
+</Files>
+<FilesMatch "\.(php)$">
+    Require all granted
+</FilesMatch>

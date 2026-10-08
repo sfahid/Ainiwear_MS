@@ -1,0 +1,6 @@
+{
+  "name": "aini-wear/production-manager",
+  "description": "Small WAMP production and order management app",
+  "require": {"php": "^8.3", "phpoffice/phpspreadsheet": "^5.0"},
+  "config": {"sort-packages": true}
+}

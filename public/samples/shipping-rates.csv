@@ -1,0 +1,4 @@
+courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until
+Demo Courier,Economy,United Kingdom,USD,0,5,42,8,2030-12-31
+Demo Courier,Express,United Kingdom,USD,0,5,65,3,2030-12-31
+Demo Courier,Economy,United Kingdom,USD,5,10,75,8,2030-12-31
