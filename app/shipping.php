@@ -25,13 +25,27 @@ function import_rates(array $f):int{
  set_time_limit(180);
  if(($f['error']??1)!==UPLOAD_ERR_OK||($f['size']??0)>SHIPPING_IMPORT_MAX_BYTES)throw new InvalidArgumentException('Upload a rate file up to 20 MB.');
  $ext=strtolower(pathinfo($f['name'],PATHINFO_EXTENSION));$data=[];
+ if($ext==='zip')throw new InvalidArgumentException('Extract the ZIP package first, then upload the single CSV rate file inside it.');
+ if(in_array($ext,['csv','xls','xlsx'],true)){
+  $probe=fopen($f['tmp_name'],'rb');if(!$probe)throw new InvalidArgumentException('Cannot read the uploaded rate file.');
+  try{$first=fgets($probe,4096);}finally{fclose($probe);}
+  if($first!==false && preg_match('/^(?:\xEF\xBB\xBF)?courier,service,destination,currency,/i',trim($first)))$ext='csv';
+ }
+
  if($ext==='csv'){
   $h=fopen($f['tmp_name'],'r');if(!$h)throw new RuntimeException('Cannot read file.');
   try{while(($r=fgetcsv($h,0,',','"',''))!==false){$data[]=$r;if(count($data)>SHIPPING_IMPORT_MAX_ROWS+1)throw new InvalidArgumentException('Maximum 50,000 data rows.');}}finally{fclose($h);}
  }elseif(in_array($ext,['xls','xlsx'],true)){
   $autoload=dirname(__DIR__).'/vendor/autoload.php';if(!is_file($autoload))throw new InvalidArgumentException('Excel support requires Composer install (see README). CSV works without it.');require_once $autoload;
+  if($ext==='xlsx'){
+   $zip=new ZipArchive();$opened=$zip->open($f['tmp_name']);
+   if($opened!==true)throw new InvalidArgumentException('This file is not a valid XLSX workbook. Upload the original CSV rate file, or save a genuine Excel workbook as XLSX.');
+   try{foreach(['[Content_Types].xml','_rels/.rels','xl/workbook.xml'] as $member)if($zip->locateName($member)===false)throw new InvalidArgumentException('This ZIP is not a complete Excel workbook. Extract the rate package and upload its CSV file, or save the workbook again in Excel.');}finally{$zip->close();}
+  }
+  try{
   // Select the reader explicitly: never treat an uploaded spreadsheet as HTML.
   $reader=\PhpOffice\PhpSpreadsheet\IOFactory::createReader($ext==='xls'?'Xls':'Xlsx');
+  if(!$reader->canRead($f['tmp_name']))throw new InvalidArgumentException('The file contents do not match its Excel format. Use the original CSV or save the workbook again in Excel.');
   $reader->setReadDataOnly(true);
   $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
    public function readCell(string $columnAddress,int $row,string $worksheetName=''):bool{return $row<=SHIPPING_IMPORT_MAX_ROWS+2 && in_array($columnAddress,['A','B','C','D','E','F','G','H','I','J','K','L'],true);}
@@ -42,6 +56,7 @@ function import_rates(array $f):int{
   $book=$reader->load($f['tmp_name']);$sheet=$book->getSheet(0);
   if($sheet->getHighestDataRow()>SHIPPING_IMPORT_MAX_ROWS+1)throw new InvalidArgumentException('Maximum 50,000 data rows.');
   $data=$sheet->rangeToArray('A1:'.\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($info[0]['totalColumns']??9).$sheet->getHighestDataRow(),null,false,false,false);$book->disconnectWorksheets();
+  }catch(InvalidArgumentException $e){throw $e;}catch(Throwable $e){error_log('Shipping workbook read failed: '.$e->getMessage());throw new InvalidArgumentException('The Excel workbook could not be read. Save it again in Excel, or upload the original CSV rate file.');}
  }else throw new InvalidArgumentException('Use CSV, XLS or XLSX.');
  if(!$data)throw new InvalidArgumentException('Empty file.');
  $headers=array_map(fn($s)=>strtolower(trim((string)$s)),array_shift($data));$headers[0]=preg_replace('/^\xEF\xBB\xBF/','',$headers[0]??'');
