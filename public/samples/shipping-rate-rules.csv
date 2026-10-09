@@ -1,0 +1,4 @@
+courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until,rate_basis,base_kg,base_rate
+Demo,Product direct paid,United Kingdom,PKR,0,10,15000,5,,flat,0,0
+Demo,Product direct paid,United Kingdom,PKR,10,50,500,5,,additional_per_kg,10,15000
+Demo,Product via non-paid,United Kingdom,PKR,11,50,1200,0,,per_kg,0,0

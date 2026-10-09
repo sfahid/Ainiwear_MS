@@ -65,7 +65,8 @@ CREATE TABLE shipping_rates (
  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, courier VARCHAR(100) NOT NULL,
  service VARCHAR(100) NOT NULL, destination VARCHAR(100) NOT NULL, currency CHAR(3) NOT NULL,
  min_kg DECIMAL(10,3) NOT NULL, max_kg DECIMAL(10,3) NOT NULL,
- rate_basis VARCHAR(10) NOT NULL DEFAULT 'flat',
+ base_kg DECIMAL(10,3) NOT NULL DEFAULT 0, base_rate DECIMAL(12,2) NOT NULL DEFAULT 0,
+ rate_basis VARCHAR(24) NOT NULL DEFAULT 'flat',
  rate DECIMAL(12,2) NOT NULL, transit_days INT UNSIGNED NOT NULL,
  valid_until DATE NULL, active TINYINT(1) NOT NULL DEFAULT 1,
  UNIQUE KEY rate_key(courier,service,destination,currency,min_kg,max_kg), INDEX(destination)

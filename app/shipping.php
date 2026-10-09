@@ -10,13 +10,15 @@ function rate_validate(array $r,int $line=0):array {
  foreach(['min_kg','max_kg','rate','transit_days'] as $k){if(!is_numeric($r[$k])||!is_finite((float)$r[$k])||(float)$r[$k]<0)throw new InvalidArgumentException($prefix."Invalid $k.");$r[$k]=(float)$r[$k];}
  if($r['max_kg']<=$r['min_kg']||$r['max_kg']>1000000||$r['rate']>100000000||$r['transit_days']>365||floor($r['transit_days'])!==$r['transit_days'])throw new InvalidArgumentException($prefix.'Check weight slab, rate and transit days.');
  $r['rate_basis']=trim((string)($r['rate_basis']??'flat'))?:'flat';
- if(!in_array($r['rate_basis'],['flat','per_kg'],true))throw new InvalidArgumentException($prefix.'rate_basis must be flat or per_kg.');
+ if(!in_array($r['rate_basis'],['flat','per_kg','additional_per_kg'],true))throw new InvalidArgumentException($prefix.'rate_basis must be flat, per_kg or additional_per_kg.');
+ foreach(['base_kg','base_rate'] as $k){$v=$r[$k]??0;if($v==='')$v=0;if(!is_numeric($v)||!is_finite((float)$v)||(float)$v<0)throw new InvalidArgumentException($prefix."Invalid $k.");$r[$k]=(float)$v;}
+ if($r['rate_basis']==='additional_per_kg' && ($r['base_kg']>$r['min_kg']||$r['base_kg']>50||$r['base_rate']>100000000))throw new InvalidArgumentException($prefix.'Base weight must not exceed the starting weight.');
  $r['valid_until']=trim((string)($r['valid_until']??''))?:null;
  if($r['valid_until']){$d=DateTimeImmutable::createFromFormat('!Y-m-d',$r['valid_until']);if(!$d||$d->format('Y-m-d')!==$r['valid_until'])throw new InvalidArgumentException($prefix.'valid_until must be YYYY-MM-DD. Format Excel date cells as text.');}
  return $r;
 }
 function save_rate(array $r):void{
- q('INSERT INTO shipping_rates(courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until,rate_basis) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE rate=VALUES(rate),transit_days=VALUES(transit_days),valid_until=VALUES(valid_until),rate_basis=VALUES(rate_basis),active=1',array_map(fn($k)=>$r[$k],['courier','service','destination','currency','min_kg','max_kg','rate','transit_days','valid_until','rate_basis']));
+ q('INSERT INTO shipping_rates(courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until,rate_basis,base_kg,base_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE rate=VALUES(rate),transit_days=VALUES(transit_days),valid_until=VALUES(valid_until),rate_basis=VALUES(rate_basis),base_kg=VALUES(base_kg),base_rate=VALUES(base_rate),active=1',array_map(fn($k)=>$r[$k],['courier','service','destination','currency','min_kg','max_kg','rate','transit_days','valid_until','rate_basis','base_kg','base_rate']));
 }
 function import_rates(array $f):int{
  global $db;
@@ -32,31 +34,34 @@ function import_rates(array $f):int{
   $reader=\PhpOffice\PhpSpreadsheet\IOFactory::createReader($ext==='xls'?'Xls':'Xlsx');
   $reader->setReadDataOnly(true);
   $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
-   public function readCell(string $columnAddress,int $row,string $worksheetName=''):bool{return $row<=SHIPPING_IMPORT_MAX_ROWS+2 && in_array($columnAddress,['A','B','C','D','E','F','G','H','I','J'],true);}
+   public function readCell(string $columnAddress,int $row,string $worksheetName=''):bool{return $row<=SHIPPING_IMPORT_MAX_ROWS+2 && in_array($columnAddress,['A','B','C','D','E','F','G','H','I','J','K','L'],true);}
   });
   $info=$reader->listWorksheetInfo($f['tmp_name']);
-  if(($info[0]['totalRows']??0)>SHIPPING_IMPORT_MAX_ROWS+1||($info[0]['totalColumns']??0)>10)throw new InvalidArgumentException('First sheet must have at most 50,000 data rows and 9 or 10 columns.');
+  if(($info[0]['totalRows']??0)>SHIPPING_IMPORT_MAX_ROWS+1||($info[0]['totalColumns']??0)>12)throw new InvalidArgumentException('First sheet must have at most 50,000 data rows and 9, 10 or 12 columns.');
   $reader->setLoadSheetsOnly($info[0]['worksheetName']);
   $book=$reader->load($f['tmp_name']);$sheet=$book->getSheet(0);
   if($sheet->getHighestDataRow()>SHIPPING_IMPORT_MAX_ROWS+1)throw new InvalidArgumentException('Maximum 50,000 data rows.');
-  $data=$sheet->rangeToArray('A1:'.(($info[0]['totalColumns']??9)>9?'J':'I').$sheet->getHighestDataRow(),null,false,false,false);$book->disconnectWorksheets();
+  $data=$sheet->rangeToArray('A1:'.\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($info[0]['totalColumns']??9).$sheet->getHighestDataRow(),null,false,false,false);$book->disconnectWorksheets();
  }else throw new InvalidArgumentException('Use CSV, XLS or XLSX.');
  if(!$data)throw new InvalidArgumentException('Empty file.');
  $headers=array_map(fn($s)=>strtolower(trim((string)$s)),array_shift($data));$headers[0]=preg_replace('/^\xEF\xBB\xBF/','',$headers[0]??'');
  $expected=['courier','service','destination','currency','min_kg','max_kg','rate','transit_days','valid_until'];
  // Excel pads optional empty columns; the header still has to contain all nine names.
- if($headers===array_merge($expected,['rate_basis']))$expected[]='rate_basis';
+ if($headers===array_merge($expected,['rate_basis','base_kg','base_rate']))$expected=array_merge($expected,['rate_basis','base_kg','base_rate']);
+ elseif($headers===array_merge($expected,['rate_basis']))$expected[]='rate_basis';
  if($headers!==$expected)throw new InvalidArgumentException('Headers must match samples/shipping-rates.csv exactly, including valid_until.');
  $valid=[];$keys=[];foreach($data as $i=>$row){if(!array_filter($row,fn($v)=>trim((string)$v)!==''))continue;
   if(count($row)>count($expected))throw new InvalidArgumentException('Row '.($i+2).': extra columns.');
   $r=rate_validate(array_combine($expected,array_pad($row,count($expected),'')),$i+2);
   $key=mb_strtolower(implode('|',array_map(fn($k)=>(string)$r[$k],array_slice($expected,0,6))));
-  if(isset($keys[$key]))throw new InvalidArgumentException('Row '.($i+2).': duplicate slab in this file.');$keys[$key]=true;$valid[]=$r;
+  if(isset($keys[$key])){if($keys[$key]!==$r)throw new InvalidArgumentException('Row '.($i+2).': conflicting duplicate slab.');continue;}$keys[$key]=$r;$valid[]=$r;
   unset($data[$i]);
  }
  if(!$valid)throw new InvalidArgumentException('No rates found.');
- $statement=$db->prepare('INSERT INTO shipping_rates(courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until,rate_basis) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE rate=VALUES(rate),transit_days=VALUES(transit_days),valid_until=VALUES(valid_until),rate_basis=VALUES(rate_basis),active=1');
- $db->beginTransaction();try{foreach($valid as $r)$statement->execute(array_map(fn($k)=>$r[$k],array_merge(array_slice($expected,0,9),['rate_basis'])));$db->commit();}catch(Throwable $e){$db->rollBack();throw $e;}return count($valid);
+ $statement=$db->prepare('INSERT INTO shipping_rates(courier,service,destination,currency,min_kg,max_kg,rate,transit_days,valid_until,rate_basis,base_kg,base_rate) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE rate=VALUES(rate),transit_days=VALUES(transit_days),valid_until=VALUES(valid_until),rate_basis=VALUES(rate_basis),base_kg=VALUES(base_kg),base_rate=VALUES(base_rate),active=1');
+ $existing=[];foreach(rows('SELECT * FROM shipping_rates') as $old)$existing[shipping_rate_key($old)]=$old;
+ $stats=['new'=>0,'updated'=>0,'unchanged'=>0];
+ $db->beginTransaction();try{foreach($valid as $r){$old=$existing[shipping_rate_key($r)]??null;if($old && shipping_rate_equal($old,$r)){$stats['unchanged']++;continue;}$statement->execute(array_map(fn($k)=>$r[$k],array_merge(array_slice($expected,0,9),['rate_basis','base_kg','base_rate'])));$stats[$old?'updated':'new']++;}$db->commit();$_SESSION['shipping_import_stats']=$stats;}catch(Throwable $e){$db->rollBack();throw $e;}return count($valid);
 }
 function rank_rates(array $rates,float $speedWeight):array{
  if(!$rates)return [];
@@ -67,6 +72,15 @@ function rank_rates(array $rates,float $speedWeight):array{
 
 function shipping_quote(array $rate,float $weight):array {
  $rate['unit_rate']=(float)$rate['rate'];
- if(($rate['rate_basis']??'flat')==='per_kg')$rate['rate']=round($rate['unit_rate']*$weight,2);
+ if(($rate['rate_basis']??'flat')==='additional_per_kg')$rate['rate']=round((float)$rate['base_rate']+max(0,$weight-(float)$rate['base_kg'])*$rate['unit_rate'],2);
+ elseif(($rate['rate_basis']??'flat')==='per_kg')$rate['rate']=round($rate['unit_rate']*$weight,2);
  return $rate;
+}
+
+function shipping_rate_key(array $r):string {
+ return mb_strtolower(implode('|',[$r['courier'],$r['service'],$r['destination'],$r['currency'],number_format((float)$r['min_kg'],3,'.',''),number_format((float)$r['max_kg'],3,'.','')]));
+}
+function shipping_rate_equal(array $a,array $b):bool {
+ foreach(['rate','transit_days','base_kg','base_rate'] as $k)if((float)($a[$k]??0)!==(float)($b[$k]??0))return false;
+ return ($a['rate_basis']??'flat')===($b['rate_basis']??'flat') && ($a['valid_until']??null)===($b['valid_until']??null) && (int)($a['active']??1)===1;
 }

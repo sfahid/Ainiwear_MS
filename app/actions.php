@@ -79,7 +79,7 @@ try {
  case 'note_done':$id=integer('id');$note=must('notes',$id);q('UPDATE notes SET done=? WHERE id=?',[$note['done']?0:1,$id]);go('order',['id'=>$note['order_id']]);
  case 'rate':save_rate(rate_validate($_POST));flash('Rate saved. Matching slabs are updated.');go('shipping');
  case 'rate_toggle':$id=integer('id');$r=must('shipping_rates',$id);q('UPDATE shipping_rates SET active=? WHERE id=?',[$r['active']?0:1,$id]);go('shipping');
- case 'import_rates':$count=import_rates($_FILES['rates']??[]);flash("$count rates imported. Existing matching slabs updated.");go('shipping');
+ case 'import_rates':$count=import_rates($_FILES['rates']??[]);$stats=$_SESSION['shipping_import_stats'];flash("$count unique rates checked: {$stats['new']} new, {$stats['updated']} updated, {$stats['unchanged']} unchanged/skipped.");go('shipping');
  case 'ai':
   ai_require_config();
   if(time()<($_SESSION['ai_after']??0))throw new InvalidArgumentException('Wait 10 seconds between AI requests.');

@@ -152,3 +152,14 @@ New installations include `shipping_rates.rate_basis`. Existing installations mu
 The original nine import headers remain supported. Add an optional tenth header, `rate_basis`, with `flat` or `per_kg`. A per-kg quote multiplies the entered chargeable weight by the unit rate, without rounding weight. Per-kg ranges include both bounds; flat slabs exclude the lower bound. Compare prices using shipment totals, not unit rates. Courier, supplier/service, route, duty status, category and postal zone must have distinct service/destination labels when their tariffs differ. Incremental and conditional surcharges are separate from total or per-kg prices.
 
 Run `php tests/shipping-per-kg.php` to verify legacy defaults, per-kg totals, fractional weights, invalid pricing methods and total-price ranking.
+
+
+Base charge plus additional kilograms
+
+Existing installations with per-kg support must run `database/shipping-additional-kg.sql` once. WAMP was migrated without removing rates. The import accepts 9-column legacy files, 10-column price-basis files, or 12-column rule files that append `rate_basis,base_kg,base_rate` to the original nine headers.
+
+`additional_per_kg` computes base_rate + (chargeable weight - base_kg) * rate, without rounding the entered weight. Its minimum is exclusive and maximum inclusive. Example: 10 kg costs 15,000, then each additional kg costs 500. Use a flat 0–10 kg rule and an additional_per_kg 10–50 kg rule with base_kg=10, base_rate=15000, rate=500. A 15 kg shipment costs 17,500.
+
+Per-kg tariffs that change by weight use separate ranges. Comparisons stop at 50 kg. Existing larger-weight records are preserved. At overlapping boundaries for one carrier/service, the matching rule with the highest starting weight takes precedence.
+
+Identical repeated rows are filtered, conflicting duplicates are rejected before saving, unchanged saved rows are skipped, and changed matching slabs are updated. Import feedback reports new, updated and unchanged counts. Use `public/samples/shipping-rate-rules.csv` for all three pricing types. Separate services and destinations preserve duty, route, supplier, category and ZIP-zone distinctions.
